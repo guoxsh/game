@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Give Me Five</title>
+    <script src="https://cdn.jsdelivr.net/npm/jquery@3.3.1/dist/jquery.min.js"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.2.umd.min.js" type="text/javascript"></script>
+</head>
+
+<body style="font-size:small;">
+    <h2>Give Me Five</h2>
+    <hr/>
+    <div>
+      <label id="is_metamask"></label>
+      <button id="connect" value="connect">connect</button>
+      <hr/>
+    </div>
+    <div>
+      <label id="network"></label>
+      <br/>
+      <label id="accounts"></label>
+      <hr/>
+    </div>
+    <div>
+      <span>游戏配置</span>
+      <br/>
+      <label id="basic_info"></label>
+      <hr/>
+    </div>
+    <div>
+      <span>在售场次</span>
+      <br/>
+      <label id="match_info"></label>
+      <hr/>
+      <select id="match_tokens"></select>
+      <hr/>
+      <input type="checkbox" name="numbers" value="1">1
+      <input type="checkbox" name="numbers" value="2">2
+      <input type="checkbox" name="numbers" value="3">3
+      <input type="checkbox" name="numbers" value="4">4
+      <input type="checkbox" name="numbers" value="5">5
+      <input type="checkbox" name="numbers" value="6">6
+      <input type="checkbox" name="numbers" value="7">7
+      <input type="checkbox" name="numbers" value="8">8
+      <input type="checkbox" name="numbers" value="9">9
+      <input type="checkbox" name="numbers" value="10">10
+      <input type="checkbox" name="numbers" value="11">11
+      <hr/>
+      参与数量 : <input id="amount"/>
+      <button id="submit" value="submit">submit</button>
+      <hr/>
+      <label color="red">Message : <font id="message" color="#FF0000"></font></label>
+      <hr/>
+      <label color="red">TX Hash : <font id="tx_hash" color="#FF0000"></font></label>
+      <hr/>
+    </div>
+    <div>
+      <span>倒计时</span>
+      <br/>
+      <label id="times"></label>
+      <hr/>
+    </div>
+    <div>
+      <span>销量统计</span>
+      <br/>
+      <label id="match_statis_info"></label>
+      <hr/>
+    </div>
+    <div>
+      <span>历史场次 - 近10场</span>
+      <br/>
+      <label id="match_info_hist"></label>
+      <hr/>
+    </div>
+    <div>
+      <span>票据记录 - 近10场</span>
+      <br/>
+      <label id="user_tickets"></label>
+      <hr/>
+    </div>
+
+    <script>
+
+        function context(node, context) {
+          node.html(context);
+        }
+
+        function contextAppend(node, context) {
+          node.append(context);
+        }
+
+        function message(context) {
+          $("#message").html(context);
+        }
+
+        function txHash(context) {
+          $("#tx_hash").html(context);
+        }
+
+        function toBasicInfo(basicInfo) {
+          var txt =
+            "单注个数 : " + basicInfo.counter + "<br/>" + 
+            "最小选号 : " + basicInfo.number_min  + "<br/>" + 
+            "最大选号 : " + basicInfo.number_max + "<br/>" + 
+            "返奖利率 : " + basicInfo.rate + "<br/>" + 
+            "返奖精度 : " + basicInfo.rate_decimals + "<br/>" +
+            "最小数量 : " + basicInfo.amount_min + "<br/>" +
+            "最大数量 : " + basicInfo.amount_max + "<br/>" +
+            "单场时间 : " + basicInfo.duration;
+          return txt;
+        }
+
+        function toMatchInfoTxt(matchInfo) {
+          var txt =
+            "场次序号 : " + matchInfo.match_id.toNumber() + "<br/>" + 
+            "场次状态 : " + match_status(matchInfo.status) + "<br/>" + 
+            "开售时间 : " + matchInfo.times_start + "<br/>" + 
+            "截止时间 : " + matchInfo.times_end + "<br/>" + 
+            "开奖凭证 : " + matchInfo.proves + "<br/>" + 
+            "开奖随机 : " + matchInfo.random + "<br/>" + 
+            "开奖号码 : " + matchInfo.numbers_win + "<hr/>";
+          return txt;
+        }
+
+        function toMatchStatisInfoTxt(token, token_name, matchStatisInfo) {
+          var txt =                     
+            "ERC20 Symbol : " + token_name + "<br/>" +
+            "ERC20 Address : " + token + "<br/>" +
+            "总销量 : " + matchStatisInfo.total_amount + "<br/>" +
+            "待兑奖 : " + matchStatisInfo.total_bonus + "<br/>" +
+            "已兑奖 : " + matchStatisInfo.total_claimed + "<br/>" +
+            "下单数 : " + matchStatisInfo.total_counter + "<br/>" +
+            "中奖数 : " + matchStatisInfo.total_winner + "<hr/>";
+          return txt;
+        }
+
+        function toTicketInfoTxt(ticketInfo) {
+          var txt =
+            "场次 ：" + ticketInfo.match_id + "<br/>" + 
+            "结算 ：" + ticketInfo.claimed + "<br/>" + 
+            "花费 ：" + ticketInfo.amount + "<br/>" + 
+            "奖金 ：" + ticketInfo.bonus + "<br/>" + 
+            "选号 ：" + ticketInfo.numbers + "<hr/>";
+            return txt;
+        }
+
+        // 事件监听
+        let listener = async function () {
+          ethereum.on('chainChanged', (chain_id) => window.location.reload());
+          ethereum.on('accountsChanged', (accounts) => window.location.reload());
+          // ethereum.on('accountsChanged', (accounts) => context($("#accounts"),  accounts));
+                    
+          listener_main = new ethers.Contract(await contract_router.contract_main(), abi_main, signer);
+          listener_main.on("CreateMatch", (_id) => {
+            console.log("发布 : " + _id);
+            match_info();
+            alert("发布 : " + _id);
+          });
+          listener_main.on("DrawTouch", (_id, _requestId) => {
+            console.log("封场 : " + _id);
+            match_info();
+            alert("封场 : " + _id);
+          });
+          listener_main.on("DrawBonus", (_id, _numbers) => {
+            console.log("开奖 : " + _id + " , 号码 : " + _numbers);
+            match_info();
+            alert("开奖 : " + _id + " , 号码 : " + _numbers);
+          });
+        }
+
+        $(function () {
+          
+          initialize();
+
+          initialize_sync();
+          
+          listener();
+
+          basic_info();
+
+          match_info();
+
+          match_info_hist();
+
+        });
+
+        // 合约初始化
+        function initialize() {
+          // basic
+          address_router = "0x050235ca041dAd7BDb1F03974dBE0421917dcC5c";
+
+          abi_router = '[{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"inputs":[],"name":"contract_basic","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_keeper","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_main","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_match","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_ticket","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_vrf","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_contract_main","type":"address"},{"internalType":"address","name":"_contract_basic","type":"address"},{"internalType":"address","name":"_contract_match","type":"address"},{"internalType":"address","name":"_contract_ticket","type":"address"},{"internalType":"address","name":"_contract_vrf","type":"address"},{"internalType":"address","name":"_contract_keeper","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"}]';        
+          abi_main = '[{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256[]","name":"_ids","type":"uint256[]"}],"name":"BuyTickets","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"_id","type":"uint256"}],"name":"CreateMatch","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"_id","type":"uint256"},{"indexed":false,"internalType":"uint16[]","name":"_numbers","type":"uint16[]"}],"name":"DrawBonus","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"_id","type":"uint256"},{"indexed":false,"internalType":"bytes32","name":"_requestId","type":"bytes32"}],"name":"DrawTouch","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"address","name":"_token","type":"address"},{"internalType":"uint256","name":"_amount","type":"uint256"},{"internalType":"uint16[]","name":"_numbers","type":"uint16[]"}],"name":"buyTickets","outputs":[{"internalType":"uint256[]","name":"ticketIds","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"address","name":"_token","type":"address"},{"internalType":"uint256","name":"_amount","type":"uint256"},{"internalType":"uint16[]","name":"_numbers","type":"uint16[]"}],"name":"calculateNumbers","outputs":[{"components":[{"internalType":"uint16","name":"counter","type":"uint16"},{"internalType":"uint256","name":"bonus","type":"uint256"},{"internalType":"uint256","name":"total_bonus","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"total_amount","type":"uint256"}],"internalType":"struct LotteryMain.CalculateTickets","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_router","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_times_start","type":"uint256"},{"internalType":"uint256","name":"_times_end","type":"uint256"}],"name":"createMatch","outputs":[{"internalType":"uint256","name":"matchId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"bytes32","name":"_requestId","type":"bytes32"},{"internalType":"uint256","name":"_randomNumber","type":"uint256"}],"name":"drawTickets","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"drawTouch","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"drawTouchRepair","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"getCurrentTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_contract","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bool","name":"_paused","type":"bool"}],"name":"setPaused","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"internalType":"address","name":"_address","type":"address"}],"name":"withdrawToken","outputs":[],"stateMutability":"nonpayable","type":"function"}]';
+          abi_match = '[{"anonymous":false,"inputs":[{"indexed":false,"internalType":"enum LotteryMatch.Status","name":"_status","type":"uint8"},{"indexed":false,"internalType":"uint256","name":"_id","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_times_end","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_times_start","type":"uint256"}],"name":"CreateMatchInfoByDuration","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint256","name":"_id","type":"uint256"},{"indexed":false,"internalType":"address[]","name":"_tokens","type":"address[]"}],"name":"CreateMatchesTokensByMatchId","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"inputs":[],"name":"contract_router","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_times_start","type":"uint256"},{"internalType":"uint256","name":"_times_end","type":"uint256"}],"name":"createMatchInfoByDuration","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"address[]","name":"_tokens","type":"address[]"}],"name":"createMatchesTokensByMatchId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"getCurrentMatchId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentMatchInfo","outputs":[{"components":[{"internalType":"enum LotteryMatch.Status","name":"status","type":"uint8"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"times_end","type":"uint256"},{"internalType":"uint256","name":"times_start","type":"uint256"},{"internalType":"uint16[]","name":"numbers_win","type":"uint16[]"},{"internalType":"bytes32","name":"proves","type":"bytes32"},{"internalType":"uint256","name":"random","type":"uint256"},{"internalType":"uint256","name":"times_proves","type":"uint256"}],"internalType":"struct LotteryMatch.LotteryMatchInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getMatchInfoByMatchId","outputs":[{"components":[{"internalType":"enum LotteryMatch.Status","name":"status","type":"uint8"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"times_end","type":"uint256"},{"internalType":"uint256","name":"times_start","type":"uint256"},{"internalType":"uint16[]","name":"numbers_win","type":"uint16[]"},{"internalType":"bytes32","name":"proves","type":"bytes32"},{"internalType":"uint256","name":"random","type":"uint256"},{"internalType":"uint256","name":"times_proves","type":"uint256"}],"internalType":"struct LotteryMatch.LotteryMatchInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"}],"name":"getMatchStatisInfoByToken","outputs":[{"components":[{"internalType":"uint256","name":"total_counter","type":"uint256"},{"internalType":"uint256","name":"total_amount","type":"uint256"},{"internalType":"uint256","name":"total_bonus","type":"uint256"},{"internalType":"uint256","name":"total_winner","type":"uint256"},{"internalType":"uint256","name":"total_claimed","type":"uint256"}],"internalType":"struct LotteryMatch.LotteryMatchStatisInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getMatchTokensByMatchId","outputs":[{"internalType":"address[]","name":"","type":"address[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"internalType":"uint256","name":"_counter","type":"uint256"},{"internalType":"uint256","name":"_total_amount","type":"uint256"},{"internalType":"uint256","name":"_total_bonus","type":"uint256"}],"name":"incrementMatchStatisInfoToBuy","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_contract","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"address","name":"_token","type":"address"}],"name":"isSupportToBuy","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"components":[{"internalType":"enum LotteryMatch.Status","name":"status","type":"uint8"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"times_end","type":"uint256"},{"internalType":"uint256","name":"times_start","type":"uint256"},{"internalType":"uint16[]","name":"numbers_win","type":"uint16[]"},{"internalType":"bytes32","name":"proves","type":"bytes32"},{"internalType":"uint256","name":"random","type":"uint256"},{"internalType":"uint256","name":"times_proves","type":"uint256"}],"internalType":"struct LotteryMatch.LotteryMatchInfo","name":"_match_info","type":"tuple"}],"name":"setMatchInfoByMatchId","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"internalType":"enum LotteryMatch.Status","name":"_status","type":"uint8"}],"name":"setMatchInfoStatusByMatchId","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"components":[{"internalType":"uint256","name":"total_counter","type":"uint256"},{"internalType":"uint256","name":"total_amount","type":"uint256"},{"internalType":"uint256","name":"total_bonus","type":"uint256"},{"internalType":"uint256","name":"total_winner","type":"uint256"},{"internalType":"uint256","name":"total_claimed","type":"uint256"}],"internalType":"struct LotteryMatch.LotteryMatchStatisInfo","name":"_statis_info","type":"tuple"}],"name":"setMatchStatisInfoByToken","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"internalType":"address","name":"_address","type":"address"}],"name":"withdrawToken","outputs":[],"stateMutability":"nonpayable","type":"function"}]';
+          abi_basic = '[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"uint16","name":"_counter","type":"uint16"},{"indexed":false,"internalType":"uint16","name":"_number_min","type":"uint16"},{"indexed":false,"internalType":"uint16","name":"_number_max","type":"uint16"},{"indexed":false,"internalType":"uint256","name":"_rate","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_rate_decimals","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_amount","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_amount_min","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_amount_max","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_amount_risk","type":"uint256"},{"indexed":false,"internalType":"uint256","name":"_duration","type":"uint256"}],"name":"SetBasicInfo","type":"event"},{"inputs":[{"internalType":"address[]","name":"_tokens","type":"address[]"}],"name":"addTokens","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"basic_info","outputs":[{"internalType":"uint16","name":"counter","type":"uint16"},{"internalType":"uint16","name":"number_min","type":"uint16"},{"internalType":"uint16","name":"number_max","type":"uint16"},{"internalType":"uint256","name":"rate","type":"uint256"},{"internalType":"uint256","name":"rate_decimals","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"amount_min","type":"uint256"},{"internalType":"uint256","name":"amount_max","type":"uint256"},{"internalType":"uint256","name":"amount_risk","type":"uint256"},{"internalType":"uint256","name":"duration","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"contract_router","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"createBasicInfoByMatchId","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address[]","name":"_tokens","type":"address[]"}],"name":"delTokens","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"getBasicInfo","outputs":[{"components":[{"internalType":"uint16","name":"counter","type":"uint16"},{"internalType":"uint16","name":"number_min","type":"uint16"},{"internalType":"uint16","name":"number_max","type":"uint16"},{"internalType":"uint256","name":"rate","type":"uint256"},{"internalType":"uint256","name":"rate_decimals","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"amount_min","type":"uint256"},{"internalType":"uint256","name":"amount_max","type":"uint256"},{"internalType":"uint256","name":"amount_risk","type":"uint256"},{"internalType":"uint256","name":"duration","type":"uint256"}],"internalType":"struct LotteryBasic.LotteryBasicInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getBasicInfoByMatchId","outputs":[{"components":[{"internalType":"uint16","name":"counter","type":"uint16"},{"internalType":"uint16","name":"number_min","type":"uint16"},{"internalType":"uint16","name":"number_max","type":"uint16"},{"internalType":"uint256","name":"rate","type":"uint256"},{"internalType":"uint256","name":"rate_decimals","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"amount_min","type":"uint256"},{"internalType":"uint256","name":"amount_max","type":"uint256"},{"internalType":"uint256","name":"amount_risk","type":"uint256"},{"internalType":"uint256","name":"duration","type":"uint256"}],"internalType":"struct LotteryBasic.LotteryBasicInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getTokens","outputs":[{"internalType":"address[]","name":"","type":"address[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_contract","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint16","name":"_counter","type":"uint16"},{"internalType":"uint16","name":"_number_min","type":"uint16"},{"internalType":"uint16","name":"_number_max","type":"uint16"},{"internalType":"uint256","name":"_rate","type":"uint256"},{"internalType":"uint256","name":"_rate_decimals","type":"uint256"},{"internalType":"uint256","name":"_amount","type":"uint256"},{"internalType":"uint256","name":"_amount_min","type":"uint256"},{"internalType":"uint256","name":"_amount_max","type":"uint256"},{"internalType":"uint256","name":"_amount_risk","type":"uint256"},{"internalType":"uint256","name":"_duration","type":"uint256"}],"name":"setBasicInfo","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"internalType":"address","name":"_address","type":"address"}],"name":"withdrawToken","outputs":[],"stateMutability":"nonpayable","type":"function"}]';
+          abi_ticket = '[{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"previousOwner","type":"address"},{"indexed":true,"internalType":"address","name":"newOwner","type":"address"}],"name":"OwnershipTransferred","type":"event"},{"inputs":[],"name":"contract_router","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"getCurrentTime","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getTicketInfoByTicketId","outputs":[{"components":[{"internalType":"bool","name":"claimed","type":"bool"},{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"bonus","type":"uint256"},{"internalType":"uint16[]","name":"numbers","type":"uint16[]"}],"internalType":"struct LotteryTicket.LotteryTicketInfo","name":"","type":"tuple"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getTicketsIdsByMatchId","outputs":[{"internalType":"uint256[]","name":"","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_address","type":"address"},{"internalType":"uint256","name":"_id","type":"uint256"}],"name":"getUserTicketsIdsByMatchId","outputs":[{"internalType":"uint256[]","name":"","type":"uint256[]"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"_contract","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"components":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint16","name":"counter_basic","type":"uint16"},{"internalType":"uint16","name":"counter","type":"uint16"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"bonus","type":"uint256"},{"internalType":"uint16[]","name":"numbers","type":"uint16[]"}],"internalType":"struct LotteryTicket.MintTickets","name":"_mint_tickets","type":"tuple"}],"name":"mintTickets","outputs":[{"internalType":"uint256[]","name":"ticketIds","type":"uint256[]"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"owner","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"renounceOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"_id","type":"uint256"},{"components":[{"internalType":"bool","name":"claimed","type":"bool"},{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"token","type":"address"},{"internalType":"uint256","name":"match_id","type":"uint256"},{"internalType":"uint256","name":"amount","type":"uint256"},{"internalType":"uint256","name":"bonus","type":"uint256"},{"internalType":"uint16[]","name":"numbers","type":"uint16[]"}],"internalType":"struct LotteryTicket.LotteryTicketInfo","name":"_ticket_info","type":"tuple"}],"name":"setTicketInfoByTicketId","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"newOwner","type":"address"}],"name":"transferOwnership","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"_token","type":"address"},{"internalType":"address","name":"_address","type":"address"}],"name":"withdrawToken","outputs":[],"stateMutability":"nonpayable","type":"function"}]';
+          abi_token = '[{"inputs":[],"stateMutability":"nonpayable","type":"constructor"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"owner","type":"address"},{"indexed":true,"internalType":"address","name":"spender","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Approval","type":"event"},{"anonymous":false,"inputs":[{"indexed":false,"internalType":"address","name":"userAddress","type":"address"},{"indexed":false,"internalType":"address payable","name":"relayerAddress","type":"address"},{"indexed":false,"internalType":"bytes","name":"functionSignature","type":"bytes"}],"name":"MetaTransactionExecuted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"role","type":"bytes32"},{"indexed":true,"internalType":"bytes32","name":"previousAdminRole","type":"bytes32"},{"indexed":true,"internalType":"bytes32","name":"newAdminRole","type":"bytes32"}],"name":"RoleAdminChanged","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"role","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"sender","type":"address"}],"name":"RoleGranted","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"role","type":"bytes32"},{"indexed":true,"internalType":"address","name":"account","type":"address"},{"indexed":true,"internalType":"address","name":"sender","type":"address"}],"name":"RoleRevoked","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"address","name":"from","type":"address"},{"indexed":true,"internalType":"address","name":"to","type":"address"},{"indexed":false,"internalType":"uint256","name":"value","type":"uint256"}],"name":"Transfer","type":"event"},{"inputs":[],"name":"CHILD_CHAIN_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"CHILD_CHAIN_ID_BYTES","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"DEFAULT_ADMIN_ROLE","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"DEPOSITOR_ROLE","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"ERC712_VERSION","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"ROOT_CHAIN_ID","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"ROOT_CHAIN_ID_BYTES","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"owner","type":"address"},{"internalType":"address","name":"spender","type":"address"}],"name":"allowance","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"approve","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"account","type":"address"}],"name":"balanceOf","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"string","name":"name_","type":"string"}],"name":"changeName","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"decimals","outputs":[{"internalType":"uint8","name":"","type":"uint8"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"subtractedValue","type":"uint256"}],"name":"decreaseAllowance","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"},{"internalType":"bytes","name":"depositData","type":"bytes"}],"name":"deposit","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"userAddress","type":"address"},{"internalType":"bytes","name":"functionSignature","type":"bytes"},{"internalType":"bytes32","name":"sigR","type":"bytes32"},{"internalType":"bytes32","name":"sigS","type":"bytes32"},{"internalType":"uint8","name":"sigV","type":"uint8"}],"name":"executeMetaTransaction","outputs":[{"internalType":"bytes","name":"","type":"bytes"}],"stateMutability":"payable","type":"function"},{"inputs":[],"name":"getChainId","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"pure","type":"function"},{"inputs":[],"name":"getDomainSeperator","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"user","type":"address"}],"name":"getNonce","outputs":[{"internalType":"uint256","name":"nonce","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"}],"name":"getRoleAdmin","outputs":[{"internalType":"bytes32","name":"","type":"bytes32"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"uint256","name":"index","type":"uint256"}],"name":"getRoleMember","outputs":[{"internalType":"address","name":"","type":"address"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"}],"name":"getRoleMemberCount","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"grantRole","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"hasRole","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"spender","type":"address"},{"internalType":"uint256","name":"addedValue","type":"uint256"}],"name":"increaseAllowance","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"string","name":"name_","type":"string"},{"internalType":"string","name":"symbol_","type":"string"},{"internalType":"uint8","name":"decimals_","type":"uint8"},{"internalType":"address","name":"childChainManager","type":"address"}],"name":"initialize","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"name","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"renounceRole","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"bytes32","name":"role","type":"bytes32"},{"internalType":"address","name":"account","type":"address"}],"name":"revokeRole","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"symbol","outputs":[{"internalType":"string","name":"","type":"string"}],"stateMutability":"view","type":"function"},{"inputs":[],"name":"totalSupply","outputs":[{"internalType":"uint256","name":"","type":"uint256"}],"stateMutability":"view","type":"function"},{"inputs":[{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transfer","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"address","name":"sender","type":"address"},{"internalType":"address","name":"recipient","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transferFrom","outputs":[{"internalType":"bool","name":"","type":"bool"}],"stateMutability":"nonpayable","type":"function"},{"inputs":[{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"withdraw","outputs":[],"stateMutability":"nonpayable","type":"function"}]';
+
+          provider = new ethers.providers.Web3Provider(window.ethereum);
+
+          signer = provider.getSigner();
+
+          contract_router = new ethers.Contract(address_router, abi_router, signer);
+          contract_main = new ethers.Contract(contract_router.contract_main(), abi_main, signer);
+          contract_match = new ethers.Contract(contract_router.contract_match(), abi_match, signer);
+          contract_basic = new ethers.Contract(contract_router.contract_basic(), abi_basic, signer);
+          contract_ticket = new ethers.Contract(contract_router.contract_ticket(), abi_ticket, signer);
+
+        }
+
+        async function initialize_sync() {
+          context($("#is_metamask"), "is_metamask : " + ethereum.isMetaMask);
+          provider.getNetwork().then((network) => {
+            context($("#network"), "chain_id : " + network.chainId + " <br/> network : " + network.name);
+          });
+
+          await accounts();
+
+          context($("#accounts"), "address : " + account);
+        }
+
+        let accounts = async function() {
+          account = await provider.getSigner().getAddress();
+          return account;
+        }
+
+        let match_info = async function() {
+          const match_info = await contract_match.getCurrentMatchInfo();
+          const match_tokens = await contract_match.getMatchTokensByMatchId(match_info.match_id.toNumber());
+
+          context($("#match_info"), toMatchInfoTxt(match_info));
+
+          await match_tokens.forEach(async (token) => {
+            const contract_token = new ethers.Contract(token, abi_token, provider);
+            const token_name = await contract_token.name();
+            var decimals = await contract_token.decimals();
+            var amount_allowance = await contract_token.allowance(account, contract_main.address);
+            var amount_allowance_uint = ethers.utils.formatUnits(amount_allowance, decimals);
+
+            var option = "<option value='" + token + "'>" + token_name + "[" + amount_allowance_uint + "]" + "</option>";
+            contextAppend($("#match_tokens"), option);
+
+            const match_statis_info = await contract_match.getMatchStatisInfoByToken(token);
+            contextAppend($("#match_statis_info"), toMatchStatisInfoTxt(token, token_name, match_statis_info));
+          });
+
+          match_timer(match_info.times_end.toNumber() - (new Date().getTime() / 1000));
+        }
+
+        let range_index = 10;
+
+        let match_info_hist = async function() {
+          var current_match_id = await contract_match.getCurrentMatchId();
+          const match_ids = [];
+          for (var i = 1; i <= range_index; i++) {
+            var match_id = current_match_id - i;
+            if (match_id <= 0) break;
+            match_ids[i - 1] = match_id;
+          }
+
+          match_ids.forEach(async (match_id) => {
+            const match_info = await contract_match.getMatchInfoByMatchId(match_id);
+            contextAppend($("#match_info_hist"), toMatchInfoTxt(match_info));
+          })
+
+          match_ids[match_ids.length] = current_match_id.toNumber();
+
+          match_ids.forEach(async (match_id) => {
+            contract_ticket.getUserTicketsIdsByMatchId(account, match_id).then(ticket_ids => {
+              ticket_ids.forEach(async (ticket_id) => {
+                contract_ticket.getTicketInfoByTicketId(ticket_id).then(ticket_info => {
+                  contextAppend($("#user_tickets"), toTicketInfoTxt(ticket_info));
+                });
+              });
+            });            
+          })
+        }
+
+        let basic_info = async function() {
+          contract_basic.getBasicInfo().then(basic_info => {
+            context($("#basic_info"), toBasicInfo(basic_info));
+          });
+        }
+
+        $("#connect").click(function(e) {
+          ethereum.request({ method: 'eth_requestAccounts' });
+        });
+
+        $("input[name='numbers']").click(function(e) {
+          if ($(this).checked) {
+            $(this).attr("checked", false);
+          } else {
+            $(this).attr("checked", true);
+          }
+        })
+
+        $("#submit").click(async function() {
+          var address_token = $("#match_tokens").val();
+          var amount = $("#amount").val();
+
+          if (amount.length == 0) {
+            message("请输入参与数量");
+            return;
+          }
+
+          var numbers = [];
+          $("input[name=numbers]:checked").each(function() {
+            numbers.push($(this).val());
+          });
+          
+          var contract_token = new ethers.Contract(address_token, abi_token, signer);
+          var decimals = await contract_token.decimals().then(decimals => {return decimals});    
+          var amount_uint = ethers.utils.parseUnits(amount, decimals);
+          // console.log(ethers.utils.formatUnits(amount_uint, decimals));
+
+          var currentMatchId = contract_match.getCurrentMatchId();
+          contract_main.buyTickets(currentMatchId, contract_token.address, amount_uint, numbers)
+            .then(data => {
+              txHash(data.hash);
+            })
+            .catch(error => {
+              if (-32603 == error.code) {
+                message(error.data.message);
+                if (error.data.message.indexOf("low-level call failed") > 0) {
+                  contract_token.allowance(account, contract_main.address).then(amount_allowance_uint => {
+                    // var amount_allowance = ethers.utils.formatUnits(amount_allowance_uint, decimals);
+                    if (amount_uint - amount_allowance_uint > 0) {
+                      contract_token.approve(contract_main.address, amount_uint);
+                    }
+                  });
+                }
+              } else {
+                message(error.message);
+              }
+            });
+        })
+
+        function match_status(status) {
+          switch (status) {
+            case 0: return "待售";
+            case 1: return "开放";
+            case 2: return "关闭";
+            case 3: return "结算";
+          }
+        }
+
+        function match_timer(diff_seconds) {
+          const interval = window.setInterval(function() {
+            var day = 0, hour = 0, minute = 0, second = 0;     
+            if (diff_seconds > 0) {
+              day = Math.floor(diff_seconds / (60 * 60 * 24));
+              hour = Math.floor(diff_seconds / (60 * 60)) - (day * 24);
+              minute = Math.floor(diff_seconds / 60) - (day * 24 * 60) - (hour * 60);
+              second = Math.floor(diff_seconds) - (day * 24 * 60 * 60) - (hour * 60 * 60) - (minute * 60);
+            }
+            if (minute <= 9) minute = '0' + minute;
+            if (second <= 9) second = '0' + second;
+            $("#times").html(day + " 天 " + hour + " 时 " + minute + " 分 " + second + " 秒 ");
+            diff_seconds--;
+            // console.log(diff_seconds);
+            if (diff_seconds < 0) window.clearInterval(interval);
+          }, 1000);
+        }
+  </script>
+</body>
